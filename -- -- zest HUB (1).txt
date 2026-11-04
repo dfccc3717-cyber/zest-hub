@@ -1,0 +1,747 @@
+-- [[ zest HUB v9.0 - FIX LAG RESTORE + NIGHT VISION COLOR TAB ]] --
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local espObjects = {}
+local espRainbowConn = nil
+local espRainbowClock = 0
+
+local CONFIG_FILE = "zestHUB_Config_v8.json"
+
+local userConfig = {
+	Noclip = false, InfJump = false, ClickTP = false,
+	InfZoom = false, ESPPlayer = false, XRay = false, Speed = false, ShiftLock = false, FixLag = false, NightVision = false, VisionColorIndex = 1, VisionBrightness = 0.25, GuiScale = 1, FixLagLevel = 2, ThemeIndex = 1, IsRainbow = false
+}
+
+local themes = {
+	{Name = "Xanh Dương (Mặc định)", Color = Color3.fromRGB(0, 195, 255)},
+	{Name = "Tím Mộng Mơ", Color = Color3.fromRGB(170, 0, 255)},
+	{Name = "Đỏ Rực Lửa", Color = Color3.fromRGB(255, 50, 50)},
+	{Name = "Xanh Lá Cây", Color = Color3.fromRGB(0, 220, 100)},
+	{Name = "Vàng Năng Động", Color = Color3.fromRGB(255, 200, 0)}
+}
+
+local currentAccentColor = themes[1].Color
+local isRainbowActive = false
+
+local function saveConfig()
+	if writefile then pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(userConfig)) end) end
+end
+
+local function loadConfig()
+	if isfile and readfile and isfile(CONFIG_FILE) then
+		pcall(function()
+			local decoded = HttpService:JSONDecode(readfile(CONFIG_FILE))
+			if type(decoded) == "table" then
+				for k, v in pairs(decoded) do userConfig[k] = v end
+				if userConfig.IsRainbow then
+					isRainbowActive = true
+				elseif userConfig.ThemeIndex and themes[userConfig.ThemeIndex] then
+					currentAccentColor = themes[userConfig.ThemeIndex].Color
+				end
+			end
+		end)
+	end
+end
+
+local function addCorner(obj, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 10)
+	c.Parent = obj
+	return c
+end
+
+local mainGui = Instance.new("ScreenGui")
+mainGui.Name = "zestHUB_NewMain"
+mainGui.ResetOnSpawn = false
+if not pcall(function() mainGui.Parent = CoreGui end) then
+	mainGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- LOADING SCREEN
+local loadFrame = Instance.new("Frame")
+loadFrame.Size = UDim2.new(0, 320, 0, 150)
+loadFrame.Position = UDim2.fromScale(0.5, 0.5)
+loadFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+loadFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+loadFrame.BorderSizePixel = 0
+loadFrame.Parent = mainGui
+addCorner(loadFrame, 16)
+
+local loadStroke = Instance.new("UIStroke")
+loadStroke.Color = currentAccentColor
+loadStroke.Thickness = 2
+loadStroke.Parent = loadFrame
+
+local loadTitle = Instance.new("TextLabel")
+loadTitle.Size = UDim2.new(1, 0, 0, 35)
+loadTitle.Position = UDim2.new(0, 0, 0, 15)
+loadTitle.BackgroundTransparency = 1
+loadTitle.Text = "⚡ ZEST HUB v9.2"
+loadTitle.Font = Enum.Font.GothamBold
+loadTitle.TextSize = 20
+loadTitle.TextColor3 = currentAccentColor
+loadTitle.Parent = loadFrame
+
+local loadStatus = Instance.new("TextLabel")
+loadStatus.Size = UDim2.new(1, 0, 0, 20)
+loadStatus.Position = UDim2.new(0, 0, 0, 55)
+loadStatus.BackgroundTransparency = 1
+loadStatus.Text = "Đang vá lỗi chống kẹt vật lý..."
+loadStatus.Font = Enum.Font.Gotham
+loadStatus.TextSize = 12
+loadStatus.TextColor3 = Color3.fromRGB(160, 160, 180)
+loadStatus.Parent = loadFrame
+
+local barBackground = Instance.new("Frame")
+barBackground.Size = UDim2.new(0.85, 0, 0, 10)
+barBackground.Position = UDim2.new(0.075, 0, 0, 95)
+barBackground.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+barBackground.BorderSizePixel = 0
+barBackground.Parent = loadFrame
+addCorner(barBackground, 5)
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = currentAccentColor
+barFill.BorderSizePixel = 0
+barFill.Parent = barBackground
+addCorner(barFill, 5)
+
+-- TOGGLE ICON
+local menuToggle = Instance.new("ImageButton")
+menuToggle.Size = UDim2.new(0, 52, 0, 52)
+menuToggle.Position = UDim2.new(0, 20, 0, 120)
+menuToggle.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+menuToggle.Image = "rbxassetid://6023426915"
+menuToggle.Visible = false
+menuToggle.Parent = mainGui
+addCorner(menuToggle, 26)
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = currentAccentColor
+toggleStroke.Thickness = 2
+toggleStroke.Parent = menuToggle
+
+local tDragging, tDragInput, tDragStart, tStartPos
+menuToggle.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		tDragging = true tDragStart = input.Position tStartPos = menuToggle.Position
+		input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then tDragging = false end end)
+	end
+end)
+menuToggle.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then tDragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if input == tDragInput and tDragging then
+		local delta = input.Position - tDragStart
+		menuToggle.Position = UDim2.new(tStartPos.X.Scale, tStartPos.X.Offset + delta.X, tStartPos.Y.Scale, tStartPos.Y.Offset + delta.Y)
+	end
+end)
+
+-- MAIN FRAME
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 500, 0, 360)
+mainFrame.Position = UDim2.fromScale(0.5, 0.5)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Visible = false
+mainFrame.Parent = mainGui
+addCorner(mainFrame, 14)
+
+-- Kich thuoc GUI duoc dieu chinh bang cach keo tay cam o goc duoi-ben-phai.
+-- Bo UIScale va cac nut +/- de nguoi dung thao tac truc tiep tren man hinh cam ung.
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = currentAccentColor
+mainStroke.Thickness = 2
+mainStroke.Parent = mainFrame
+
+local titleFrame = Instance.new("Frame")
+titleFrame.Size = UDim2.new(1, 0, 0, 40)
+titleFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+titleFrame.BorderSizePixel = 0
+titleFrame.Parent = mainFrame
+addCorner(titleFrame, 14)
+
+local dragging, dragInput, dragStart, startPos
+titleFrame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true dragStart = input.Position startPos = mainFrame.Position
+		input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+	end
+end)
+titleFrame.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(1, -20, 1, 0)
+titleLbl.Position = UDim2.new(0, 15, 0, 0)
+titleLbl.BackgroundTransparency = 1
+titleLbl.TextColor3 = currentAccentColor
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.TextSize = 14
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.Text = "⚡ ZEST HUB v9.2 - PREMIUM PANEL"
+titleLbl.Parent = titleFrame
+
+-- Keo goc duoi-ben-phai de thay doi chieu rong/cao cua GUI.
+local resizeGrip = Instance.new("TextButton")
+resizeGrip.Name = "ResizeGrip"
+resizeGrip.Size = UDim2.new(0, 30, 0, 30)
+resizeGrip.AnchorPoint = Vector2.new(1, 1)
+resizeGrip.Position = UDim2.new(1, -5, 1, -5)
+resizeGrip.BackgroundColor3 = Color3.fromRGB(38, 42, 56)
+resizeGrip.BackgroundTransparency = 0.12
+resizeGrip.Text = "◢"
+resizeGrip.TextColor3 = currentAccentColor
+resizeGrip.Font = Enum.Font.GothamBold
+resizeGrip.TextSize = 19
+resizeGrip.AutoButtonColor = false
+resizeGrip.ZIndex = 20
+resizeGrip.Parent = mainFrame
+addCorner(resizeGrip, 7)
+
+local resizing, resizeInput, resizeStart, startSize
+local MIN_WIDTH, MIN_HEIGHT = 320, 250
+local MAX_WIDTH, MAX_HEIGHT = 850, 650
+resizeGrip.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		resizing = true
+		resizeStart = input.Position
+		startSize = mainFrame.Size
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then resizing = false end
+		end)
+	end
+end)
+resizeGrip.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		resizeInput = input
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if resizing and input == resizeInput then
+		local delta = input.Position - resizeStart
+		local width = math.clamp(startSize.X.Offset + delta.X, MIN_WIDTH, MAX_WIDTH)
+		local height = math.clamp(startSize.Y.Offset + delta.Y, MIN_HEIGHT, MAX_HEIGHT)
+		mainFrame.Size = UDim2.new(0, width, 0, height)
+	end
+end)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -34, 0.5, -14)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 12
+closeBtn.Text = "✕"
+closeBtn.Parent = titleFrame
+addCorner(closeBtn, 6)
+
+closeBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+end)
+
+-- Tab Navigation
+local tabHolder = Instance.new("Frame")
+tabHolder.Size = UDim2.new(1, -24, 0, 32)
+tabHolder.Position = UDim2.new(0, 12, 0, 50)
+tabHolder.BackgroundTransparency = 1
+tabHolder.Parent = mainFrame
+
+local function createTabButton(text, xPos)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0.19, 0, 1, 0)
+	btn.Position = UDim2.new(xPos, 0, 0, 0)
+	btn.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
+	btn.TextColor3 = Color3.fromRGB(160, 160, 180)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 10
+	btn.Text = text
+	btn.Parent = tabHolder
+	addCorner(btn, 8)
+	return btn
+end
+
+local scriptTabBtn = createTabButton("⚙ TÍNH NĂNG", 0)
+local fixLagTabBtn = createTabButton("⚡ FIX LAG", 0.202)
+local tpTabBtn = createTabButton("◎ TELE", 0.404)
+local visionTabBtn = createTabButton("☾ NHÌN ĐÊM", 0.606)
+local sysTabBtn = createTabButton("⚙ HỆ THỐNG", 0.808)
+
+scriptTabBtn.BackgroundColor3 = currentAccentColor
+scriptTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+local function createScrollFrame()
+	local sf = Instance.new("ScrollingFrame")
+	sf.Size = UDim2.new(1, -24, 1, -96)
+	sf.Position = UDim2.new(0, 12, 0, 88)
+	sf.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+	sf.BorderSizePixel = 0
+	sf.ScrollBarThickness = 3
+	sf.ScrollBarImageColor3 = currentAccentColor
+	sf.Visible = false
+	sf.Parent = mainFrame
+	addCorner(sf, 10)
+	return sf
+end
+
+local leftScroll = Instance.new("ScrollingFrame")
+leftScroll.Size = UDim2.new(0.48, 0, 1, -96)
+leftScroll.Position = UDim2.new(0, 12, 0, 88)
+leftScroll.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+leftScroll.BorderSizePixel = 0
+leftScroll.ScrollBarThickness = 3
+leftScroll.ScrollBarImageColor3 = currentAccentColor
+leftScroll.Parent = mainFrame
+addCorner(leftScroll, 10)
+
+local rightScroll = Instance.new("ScrollingFrame")
+rightScroll.Size = UDim2.new(0.48, 0, 1, -96)
+rightScroll.Position = UDim2.new(0.51, 0, 0, 88)
+rightScroll.BackgroundColor3 = Color3.fromRGB(10, 10, 15)
+rightScroll.BorderSizePixel = 0
+rightScroll.ScrollBarThickness = 3
+rightScroll.ScrollBarImageColor3 = currentAccentColor
+rightScroll.Parent = mainFrame
+addCorner(rightScroll, 10)
+
+local fixLagScroll = createScrollFrame()
+local visionScroll = createScrollFrame()
+local tpScroll = createScrollFrame()
+local sysScroll = createScrollFrame()
+
+local tabButtons = {scriptTabBtn, fixLagTabBtn, tpTabBtn, visionTabBtn, sysTabBtn}
+local tabPages = {
+	[scriptTabBtn] = function() leftScroll.Visible = true rightScroll.Visible = true fixLagScroll.Visible = false visionScroll.Visible = false tpScroll.Visible = false sysScroll.Visible = false end,
+	[fixLagTabBtn] = function() leftScroll.Visible = false rightScroll.Visible = false fixLagScroll.Visible = true visionScroll.Visible = false tpScroll.Visible = false sysScroll.Visible = false end,
+	[tpTabBtn] = function() leftScroll.Visible = false rightScroll.Visible = false fixLagScroll.Visible = false visionScroll.Visible = false tpScroll.Visible = true sysScroll.Visible = false end,
+	[visionTabBtn] = function() leftScroll.Visible = false rightScroll.Visible = false fixLagScroll.Visible = false visionScroll.Visible = true tpScroll.Visible = false sysScroll.Visible = false end,
+	[sysTabBtn] = function() leftScroll.Visible = false rightScroll.Visible = false fixLagScroll.Visible = false visionScroll.Visible = false tpScroll.Visible = false sysScroll.Visible = true end
+}
+local function selectTab(selected)
+	for _, tab in ipairs(tabButtons) do
+		local active = tab == selected
+		tab.BackgroundColor3 = active and currentAccentColor or Color3.fromRGB(22, 22, 32)
+		tab.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 180)
+	end
+	tabPages[selected]()
+end
+scriptTabBtn.MouseButton1Click:Connect(function() selectTab(scriptTabBtn) end)
+fixLagTabBtn.MouseButton1Click:Connect(function() selectTab(fixLagTabBtn) end)
+visionTabBtn.MouseButton1Click:Connect(function() selectTab(visionTabBtn) end)
+tpTabBtn.MouseButton1Click:Connect(function() selectTab(tpTabBtn) end)
+sysTabBtn.MouseButton1Click:Connect(function() selectTab(sysTabBtn) end)
+
+menuToggle.MouseButton1Click:Connect(function() mainFrame.Visible = not mainFrame.Visible end)
+
+-- TÍNH NĂNG NOCLIP: LƯU VÀ KHÔI PHỤC TRẠNG THÁI VA CHẠM GỐC
+local jumpReqConn, tpTool, shiftLockGui, shiftLockRender
+local noclipConn = nil
+local originalCollision = {}
+
+local function restoreCollision()
+	for part, oldValue in pairs(originalCollision) do
+		if part and part.Parent then
+			part.CanCollide = oldValue
+		end
+	end
+	table.clear(originalCollision)
+end
+
+local function applyNoclipToCharacter(char)
+	if not char then return end
+
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			-- Lưu trạng thái gốc đúng một lần, kể cả khi giá trị gốc là false.
+			if originalCollision[part] == nil then
+				originalCollision[part] = part.CanCollide
+			end
+			part.CanCollide = false
+		end
+	end
+end
+
+local function toggleNoclip(btn, state)
+	if state ~= nil then
+		userConfig.Noclip = state
+	else
+		userConfig.Noclip = not userConfig.Noclip
+	end
+
+	if userConfig.Noclip then
+		if noclipConn then
+			noclipConn:Disconnect()
+			noclipConn = nil
+		end
+
+		local char = LocalPlayer.Character
+		if char then
+			applyNoclipToCharacter(char)
+		end
+
+		noclipConn = RunService.Stepped:Connect(function()
+			if userConfig.Noclip then
+				local currentChar = LocalPlayer.Character
+				if currentChar then
+					applyNoclipToCharacter(currentChar)
+				end
+			end
+		end)
+	else
+		if noclipConn then
+			noclipConn:Disconnect()
+			noclipConn = nil
+		end
+
+		-- Khôi phục CanCollide theo từng part, không ép tất cả thành true.
+		restoreCollision()
+	end
+
+	saveConfig()
+end
+
+-- Khi nhân vật hồi sinh, bỏ trạng thái của nhân vật cũ và áp dụng lại
+-- Noclip cho nhân vật mới nếu tính năng vẫn đang bật.
+LocalPlayer.CharacterAdded:Connect(function(char)
+	restoreCollision()
+
+	task.defer(function()
+		if userConfig.Noclip and LocalPlayer.Character == char then
+			applyNoclipToCharacter(char)
+		end
+	end)
+end)
+
+local function toggleInfinityJump(btn, state)
+	if state ~= nil then userConfig.InfJump = state else userConfig.InfJump = not userConfig.InfJump end
+	if userConfig.InfJump then
+		if jumpReqConn then jumpReqConn:Disconnect() end
+		jumpReqConn = UserInputService.JumpRequest:Connect(function()
+			if userConfig.InfJump and LocalPlayer.Character then
+				local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+				local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+				if hrp and hum then 
+					hum:ChangeState(Enum.HumanoidStateType.Jumping) 
+					hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 50, hrp.AssemblyLinearVelocity.Z) 
+				end
+			end
+		end)
+	else
+		if jumpReqConn then jumpReqConn:Disconnect() end
+	end
+	saveConfig()
+end
+
+local function toggleClickTP(btn, state)
+	if state ~= nil then userConfig.ClickTP = state else userConfig.ClickTP = not userConfig.ClickTP end
+	if userConfig.ClickTP then
+		local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+		if bp and not tpTool then
+			tpTool = Instance.new("Tool") tpTool.Name = "Click Teleport" tpTool.RequiresHandle = false
+			tpTool.Activated:Connect(function()
+				local mouse = LocalPlayer:GetMouse()
+				if mouse and mouse.Hit and LocalPlayer.Character then
+					local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+					if hrp then hrp.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0)) end
+				end
+			end)
+			tpTool.Parent = bp
+		end
+	else
+		if tpTool then tpTool:Destroy() tpTool = nil end
+	end
+	saveConfig()
+end
+
+
+
+-- X-RAY: làm các BasePart trong map bán trong suốt ở phía client và khôi phục khi tắt.
+local xrayOriginal = {}
+local xrayConn = nil
+local xrayTransparency = 0.65
+local function applyXrayToPart(part)
+    if not part:IsA("BasePart") then return end
+    if LocalPlayer.Character and part:IsDescendantOf(LocalPlayer.Character) then return end
+    if xrayOriginal[part] == nil then xrayOriginal[part] = part.LocalTransparencyModifier end
+    part.LocalTransparencyModifier = xrayTransparency
+end
+local function toggleXray(btn, state)
+    if state ~= nil then userConfig.XRay = state else userConfig.XRay = not userConfig.XRay end
+    if userConfig.XRay then
+        for _, obj in ipairs(Workspace:GetDescendants()) do applyXrayToPart(obj) end
+        if xrayConn then xrayConn:Disconnect() end
+        xrayConn = Workspace.DescendantAdded:Connect(function(obj)
+            if userConfig.XRay then applyXrayToPart(obj) end
+        end)
+    else
+        if xrayConn then xrayConn:Disconnect(); xrayConn = nil end
+        for part, old in pairs(xrayOriginal) do
+            if part and part.Parent then part.LocalTransparencyModifier = old end
+        end
+        table.clear(xrayOriginal)
+    end
+    saveConfig()
+end
+
+-- SPEED: người dùng nhập WalkSpeed mong muốn; bật/tắt riêng.
+local speedEnabled = false
+local speedOriginal = nil
+local speedValue = 32
+local speedConn = nil
+local function applySpeed()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and speedEnabled then hum.WalkSpeed = speedValue end
+end
+local function toggleSpeed(btn, state)
+    if state ~= nil then speedEnabled = state else speedEnabled = not speedEnabled end
+    userConfig.Speed = speedEnabled
+    if speedEnabled then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then speedOriginal = hum.WalkSpeed end
+        applySpeed()
+        if speedConn then speedConn:Disconnect() end
+        speedConn = LocalPlayer.CharacterAdded:Connect(function(char)
+            char:WaitForChild("Humanoid", 5)
+            task.wait(0.1)
+            applySpeed()
+        end)
+    else
+        if speedConn then speedConn:Disconnect(); speedConn = nil end
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and speedOriginal then hum.WalkSpeed = speedOriginal end
+        speedOriginal = nil
+    end
+    saveConfig()
+end
+
+-- Inf Zoom độc lập: tăng giới hạn zoom và dùng Invisicam để camera làm mờ vật cản.
+local oldCameraMaxZoom = nil
+local oldCameraOcclusion = nil
+local function toggleInfZoom(btn, state)
+	if state ~= nil then userConfig.InfZoom = state else userConfig.InfZoom = not userConfig.InfZoom end
+	if userConfig.InfZoom then
+		if oldCameraMaxZoom == nil then oldCameraMaxZoom = LocalPlayer.CameraMaxZoomDistance end
+		if oldCameraOcclusion == nil then oldCameraOcclusion = LocalPlayer.DevCameraOcclusionMode end
+		LocalPlayer.CameraMaxZoomDistance = 100000
+		pcall(function() LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam end)
+	else
+		LocalPlayer.CameraMaxZoomDistance = oldCameraMaxZoom or 128
+		if oldCameraOcclusion ~= nil then pcall(function() LocalPlayer.DevCameraOcclusionMode = oldCameraOcclusion end) end
+		oldCameraMaxZoom, oldCameraOcclusion = nil, nil
+	end
+	saveConfig()
+end
+
+local function toggleShiftLock(btn, state)
+	if state ~= nil then userConfig.ShiftLock = state else userConfig.ShiftLock = not userConfig.ShiftLock end
+	if userConfig.ShiftLock then
+		pcall(function() LocalPlayer.DevEnableMouseLock = true end)
+		if not shiftLockGui then
+			shiftLockGui = Instance.new("ScreenGui") shiftLockGui.Name = "zestShiftLockUI" shiftLockGui.ResetOnSpawn = false
+			pcall(function() shiftLockGui.Parent = CoreGui end)
+			if not shiftLockGui.Parent then shiftLockGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+			local slBtn = Instance.new("ImageButton")
+			slBtn.Size = UDim2.new(0, 50, 0, 50) slBtn.Position = UDim2.new(1, -120, 0.5, -25)
+			slBtn.Image = "rbxasset://textures/ui/mouseLock_off.png" slBtn.BackgroundTransparency = 1 slBtn.Parent = shiftLockGui
+			local isLocked = false
+			slBtn.MouseButton1Click:Connect(function()
+				isLocked = not isLocked
+				if isLocked then
+					slBtn.Image = "rbxasset://textures/ui/mouseLock_on.png"
+					UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+					shiftLockRender = RunService.RenderStepped:Connect(function()
+						local char = LocalPlayer.Character
+						local cam = workspace.CurrentCamera
+						if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+							char:FindFirstChildOfClass("Humanoid").AutoRotate = false
+							local look = cam.CFrame.lookVector
+							local root = char.HumanoidRootPart
+							root.CFrame = CFrame.new(root.Position, root.Position + Vector3.new(look.X, 0, look.Z))
+						end
+					end)
+				else
+					slBtn.Image = "rbxasset://textures/ui/mouseLock_off.png"
+					UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+					if shiftLockRender then shiftLockRender:Disconnect() shiftLockRender = nil end
+					if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+						LocalPlayer.Character:FindFirstChildOfClass("Humanoid").AutoRotate = true
+					end
+				end
+			end)
+		end
+	else
+		if shiftLockGui then shiftLockGui:Destroy() shiftLockGui = nil end
+		if shiftLockRender then shiftLockRender:Disconnect() shiftLockRender = nil end
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
+	saveConfig()
+end
+
+-- FIX LAG NÂNG CẤP: 4 mức, lưu trạng thái gốc để khôi phục khi tắt.
+local fixLagSnapshot = {parts = {}, visuals = {}}
+local fixLagAddedConn
+local oldRenderQuality, oldGlobalShadows, oldFogEnd
+local fixLagProfiles = {
+	[1] = {Name="NHẸ", Quality=Enum.QualityLevel.Automatic, HideTextures=false, DisableEffects=false, Simplify=false},
+	[2] = {Name="VỪA", Quality=Enum.QualityLevel.Level05, HideTextures=false, DisableEffects=true, Simplify=false},
+	[3] = {Name="MẠNH", Quality=Enum.QualityLevel.Level03, HideTextures=true, DisableEffects=true, Simplify=true},
+	[4] = {Name="CỰC MẠNH", Quality=Enum.QualityLevel.Level01, HideTextures=true, DisableEffects=true, Simplify=true}
+}
+local function optimizeObject(obj)
+	local profile = fixLagProfiles[math.clamp(tonumber(userConfig.FixLagLevel) or 2, 1, 4)]
+	if obj:IsA("BasePart") then
+		if not fixLagSnapshot.parts[obj] then
+			fixLagSnapshot.parts[obj] = {Material=obj.Material, Reflectance=obj.Reflectance, CastShadow=obj.CastShadow}
+		end
+		obj.CastShadow = false
+		if profile.Simplify then obj.Material = Enum.Material.SmoothPlastic; obj.Reflectance = 0 end
+	elseif obj:IsA("Decal") or obj:IsA("Texture") then
+		if profile.HideTextures then
+			if fixLagSnapshot.visuals[obj] == nil then fixLagSnapshot.visuals[obj] = {Kind="Transparency", Value=obj.Transparency} end
+			obj.Transparency = 1
+		end
+	elseif profile.DisableEffects and (obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles")) then
+		if fixLagSnapshot.visuals[obj] == nil then fixLagSnapshot.visuals[obj] = {Kind="Enabled", Value=obj.Enabled} end
+		obj.Enabled = false
+	end
+end
+local function applyFixLag()
+	if oldGlobalShadows == nil then
+		oldGlobalShadows, oldFogEnd = Lighting.GlobalShadows, Lighting.FogEnd
+		pcall(function() oldRenderQuality = settings().Rendering.QualityLevel end)
+	end
+	for _, obj in ipairs(Workspace:GetDescendants()) do pcall(optimizeObject, obj) end
+	local profile = fixLagProfiles[math.clamp(tonumber(userConfig.FixLagLevel) or 2, 1, 4)]
+	Lighting.GlobalShadows = false
+	if profile.HideTextures then Lighting.FogEnd = 100000 end
+	pcall(function() settings().Rendering.QualityLevel = profile.Quality end)
+	if fixLagAddedConn then fixLagAddedConn:Disconnect() end
+	fixLagAddedConn = Workspace.DescendantAdded:Connect(function(obj)
+		if userConfig.FixLag then task.defer(function() if obj and obj.Parent then pcall(optimizeObject, obj) end end) end
+	end)
+end
+local function restoreFixLag()
+	if fixLagAddedConn then fixLagAddedConn:Disconnect() fixLagAddedConn = nil end
+	for obj, old in pairs(fixLagSnapshot.parts) do
+		if obj and obj.Parent then pcall(function() obj.Material=old.Material; obj.Reflectance=old.Reflectance; obj.CastShadow=old.CastShadow end) end
+	end
+	for obj, old in pairs(fixLagSnapshot.visuals) do
+		if obj and obj.Parent then pcall(function() if old.Kind == "Transparency" then obj.Transparency=old.Value else obj.Enabled=old.Value end end) end
+	end
+	table.clear(fixLagSnapshot.parts); table.clear(fixLagSnapshot.visuals)
+	if oldGlobalShadows ~= nil then Lighting.GlobalShadows = oldGlobalShadows end
+	if oldFogEnd ~= nil then Lighting.FogEnd = oldFogEnd end
+	if oldRenderQuality ~= nil then pcall(function() settings().Rendering.QualityLevel = oldRenderQuality end) end
+end
+local function toggleFixLag(btn, state)
+	if state ~= nil then userConfig.FixLag = state else userConfig.FixLag = not userConfig.FixLag end
+	if userConfig.FixLag then applyFixLag() else restoreFixLag() end
+	saveConfig()
+end
+local function setFixLagLevel(level)
+	userConfig.FixLagLevel = level
+	if userConfig.FixLag then
+		-- Khôi phục bản cũ trước khi áp dụng mức mới, giữ nguyên snapshot gốc.
+		if fixLagAddedConn then fixLagAddedConn:Disconnect(); fixLagAddedConn = nil end
+		for obj, old in pairs(fixLagSnapshot.parts) do
+			if obj and obj.Parent then pcall(function() obj.Material=old.Material; obj.Reflectance=old.Reflectance; obj.CastShadow=old.CastShadow end) end
+		end
+		for obj, old in pairs(fixLagSnapshot.visuals) do
+			if obj and obj.Parent then pcall(function() if old.Kind == "Transparency" then obj.Transparency=old.Value else obj.Enabled=old.Value end end) end
+		end
+		-- Xóa snapshot tạm, chụp lại trạng thái hiện tại sau khi phục hồi.
+		table.clear(fixLagSnapshot.parts); table.clear(fixLagSnapshot.visuals)
+		applyFixLag()
+	end
+	saveConfig()
+end
+
+-- ESP Player nền cầu vồng (giữ lại, không kèm Aimbot).
+local function clearESP()
+	for _, obj in pairs(espObjects) do if obj and obj.Parent then obj:Destroy() end end
+	table.clear(espObjects)
+end
+local function addESP(player)
+	if player == LocalPlayer or not userConfig.ESPPlayer then return end
+	local char = player.Character
+	if not char then return end
+	local old = espObjects[player]
+	if old then old:Destroy() end
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "zestPlayerESP"
+	local c = Color3.fromHSV(espRainbowClock % 1, 0.9, 1)
+	highlight.FillColor = c
+	highlight.OutlineColor = c
+	highlight.FillTransparency = 0.65
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = char
+	highlight.Parent = char
+	espObjects[player] = highlight
+end
+local function toggleESPPlayer(btn, state)
+	if state ~= nil then userConfig.ESPPlayer = state else userConfig.ESPPlayer = not userConfig.ESPPlayer end
+	if espRainbowConn then espRainbowConn:Disconnect(); espRainbowConn = nil end
+	clearESP()
+	if userConfig.ESPPlayer then
+		for _, player in ipairs(Players:GetPlayers()) do addESP(player) end
+		espRainbowConn = RunService.Heartbeat:Connect(function(dt)
+			espRainbowClock = (espRainbowClock + dt * 0.16) % 1
+			local c = Color3.fromHSV(espRainbowClock, 0.9, 1)
+			for player, highlight in pairs(espObjects) do
+				if highlight and highlight.Parent then highlight.FillColor = c; highlight.OutlineColor = c else espObjects[player] = nil end
+			end
+		end)
+	end
+	saveConfig()
+end
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function() task.wait(0.5); addESP(player) end)
+end)
+for _, player in ipairs(Players:GetPlayers()) do
+	player.CharacterAdded:Connect(function() task.wait(0.5); addESP(player) end)
+end
+Players.PlayerRemoving:Connect(function(player)
+	if espObjects[player] then espObjects[player]:Destroy(); espObjects[player] = nil end
+end)
+
+-- NHÌN ĐÊM: màu và cường độ được chỉnh trong tab riêng.
+local nightVisionEffect
+local nightVisionLightingOriginal
+
+local visionPalettes = {
+	{Name = "Xanh lá", Color = Color3.fromRGB(170, 255, 175)},
+	{Name = "Xanh dương", Color = Color3.fromRGB(150, 205, 255)},
+	{Name = "Tím", Color = Color3.fromRGB(220, 165, 255)},
+	{Name = "Vàng", Color = Color3.fromRGB(255, 225, 150)},
+	{Name = "Trắng", Color = Color3.fromRGB(255, 255, 255)},
+	{Name = "Đỏ", Color = Color3.fromRGB(255, 155, 155)}
+}
+local function updateNightVisionEffect()
+	if not nightVisionEffect then return end
+	local palette = visionPalettes[userConfig.VisionColorIndex] or visionPalettes[1]
+	local amount = math.clamp(0.35 + (tonumber(userConfig.VisionBrightness) or 0.25), 0, 1)
+	nightVisionEffect.TintColor = palette.Color
+	nightVisionEffect.Brightness = math.clamp(tonumber(userConfig.VisionBr
